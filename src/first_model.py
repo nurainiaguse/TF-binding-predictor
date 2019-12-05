@@ -13,50 +13,51 @@ import matplotlib.pyplot as plt
 
 k = 3
 seq_len = 500
-comb = 4 # possible combinations of k-mers
+comb = 8 # possible combinations of k-mers
 fasta_sequences = SeqIO.parse(open(sys.argv[1]),'fasta')
 def writeh5(seqs,filename,offset_values=None):
-    seqsnp=np.zeros((len(seqs),4,seq_len))
+    seqsnp=np.zeros((len(seqs),8,seq_len))
 
     mydict={'A':np.asarray([1,0,0,0]),'G':np.asarray([0,1,0,0]),'C':np.asarray([0,0,1,0]),'T':np.asarray([0,0,0,1]),'N':np.asarray([0,0,0,0]),'H':np.asarray([0,0,0,0]),'a':np.asarray([1,0,0,0]),'g':np.asarray([0,1,0,0]),'c':np.asarray([0,0,1,0]),'t':np.asarray([0,0,0,1]),'n':np.asarray([0,0,0,0])}
     n=0
     offset_values = np.zeros(len(seqs))
     for seq in seqs:
     	for i in range(seq_len):
-    		seqsnp[n,:,i] = mydict[seq[i]]
+    		seqsnp[n,:,i] = np.concatenate([mydict[seq[i]], mydict[seq[i]][::-1]], axis=0) # need both strands represented
     	n = n+1
     seqsnp=seqsnp[:n,:,:]
-    seqsnp = seqsnp.reshape(seqsnp.shape[0],4,seq_len,1)
+    seqsnp = seqsnp.reshape(seqsnp.shape[0],8,seq_len,1)
     return seqsnp
 seqs=[str(fasta.seq) for fasta in fasta_sequences]
 
 X_data = writeh5(seqs,sys.argv[1]+'.ref.h5')
 score_list = [float(line.rstrip('\n').split('\t')[1]) for line in open(sys.argv[2])]
 med = median(score_list) # if score is greater than median, we consider it as binding. otherwise, non-binding
-Y_data = np.asarray([[1,0] if score > med else [0,1] for score in score_list])
+Y_data = np.asarray([1 if score > med else 0 for score in score_list])
 X_data, X_test, Y_data, Y_test = train_test_split(X_data, Y_data, test_size=0.25, random_state=42)
 print(X_data.shape)
 np.random.seed(2)
 
 
 model = Sequential()
-model.add(Convolution2D(150, (comb, 8), activation='relu', input_shape=( comb,seq_len, 1)))
-model.add(MaxPooling2D(pool_size=(1,4), strides=4))
+model.add(Convolution2D(150, (4, 8), strides=(4,1), activation='relu', input_shape=( comb,seq_len, 1)))
+model.add(MaxPooling2D(pool_size=(1,4), strides=(1,4)))
 model.add(Dropout(0.25))
 model.add(Convolution2D(200, (1, 8), activation='relu'))
-model.add(MaxPooling2D(pool_size=(1,4), strides=4))
+model.add(MaxPooling2D(pool_size=(1,4), strides=(1,4)))
 model.add(Dropout(0.25))
 model.add(Convolution2D(500, (1, 8), activation='relu'))
+model.add(MaxPooling2D(pool_size=(2,1), strides=(2,1)))
 
 model.add(Flatten())
 # model.add(Dense(16, activation='relu'))
 model.add(Dropout(0.5))
-model.add(Dense(2, activation='sigmoid'))
-model.compile(loss='categorical_crossentropy',optimizer='adam',metrics=['accuracy'])
-print(printing)
+model.add(Dense(1, activation='sigmoid'))
+model.compile(loss='binary_crossentropy',optimizer='adam',metrics=['accuracy'])
+# print(printing)
 
 
-history = model.fit(X_data, Y_data, batch_size=1, epochs=10, verbose=0, validation_split=0.25)
+history = model.fit(X_data, Y_data, batch_size=1, epochs=50, verbose=0, validation_split=0.25)
 
 # summarize history for accuracy (https://machinelearningmastery.com/display-deep-learning-model-training-history-in-keras/)
 plt.subplot(2,1,1)
